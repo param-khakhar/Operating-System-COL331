@@ -1,0 +1,226 @@
+Booting in C
+
+What is a boot loader?
+
+Boot loader is a program that loads an operating system (usually, although boot loader can be used for other purposes). 
+It is loaded into operating memory from persistent memory, such as a hard drive or whatever else.
+
+Bare Metal?
+
+Bare-metal stands for bare-metal programming. We will not use any layers of abstraction such as GRUB loader or C language 
+or operating system (we don’t have it at this step). We will use Assembly language (nasm compiler) and that’s it. 
+We will interact with a system at the hardware level.
+
+BIOS?
+
+For IBM PC-compatible computers, BIOS is non-volatile firmware (Firmware is a software program permanently etched 
+into a hardware device such as a keyboards, hard drive, BIOS, or video cards. It is a software that provides the low-level
+control of a device's specific hardware.) used to perform hardware initialization during the booting process 
+(power-on startup), and to provide runtime services for operating systems and programs. 
+The BIOS firmware comes pre-installed on a personal computer’s system board, and it is the first software run 
+when powered on.
+
+What does it mean for us as “boot loader” developers?
+
+It means that we already have some software on our PC which runs in the first place and we need to integrate with it. 
+So, let’s start with getting to know what happens in there by pressing the Power button (short story).
+
+You pressed the Power button…
+LED on your computer blinks…
+BIOS prepares to call POST procedure…
+
+POST stands for Power-On-Self-Test and the purposes of this procedure are simple — check if everything works correctly.
+The interesting part here is where this sequence leads us to. This sequence of POST procedures culminates in locating a 
+bootable device, such as a floppy disk, cd-rom, hard disk or usb stick, whatever.
+
+- A BIOS is a special program that is embedded in BIOS chip.
+- The BIOS program is executed which in turn performs the following tasks.
+- Runs Power On self Test.
+- Checks the clocks and various buses available.
+- Checks system clock and hardware information in CMOS RAM
+- Verifies system settings, hardware settings pre-configured etc.,
+- Tests the attached hardware starting from devices like RAM, disk drives, optical drives, hardware drives and so on.
+- Depending upon the pre-configured information in BIOS Bootable devices information, it searches 
+for a boot drive based on the information available in the settings and starts initializing it to proceed further.
+
+How does BIOS recognize a device as bootable?
+
+Turns out, by magic numbers. These numbers are 0x55 and 0xAA, or 85 and 170 in decimal appropriately. 
+Also, these magic numbers must be located exactly in bytes 511 and 512 in our bootable device.
+You already got it; these magic numbers are just markers for BIOS that help to identify bootable 
+devices from other devices.
+When the BIOS finds such a boot sector, it loads it into memory at a specific address — 0x0000:0x7C00.
+
+What is a bootable device?
+
+A device is bootable device if it contains a boot sector or boot block and bios reads that device by 
+first loading the boot sector into memory (RAM) for execution and then proceeds further.
+
+What is a sector?
+
+A sector is a specifically sized division of a bootable disk. Usually a sector is of 512 bytes in size. 
+
+What is a boot sector?
+
+A boot sector or a boot block is a region on a bootable device that contains machine code to be loaded into RAM 
+by a computer system’s built-in firmware during its initialization. It is of 512 bytes on a floppy disk.
+
+How does a bootable device work?
+
+Whenever a bootable device is initialized, bios searches and loads the 1st sector which is known as boot sector 
+or boot block into the RAM and starts executing it. Whatever the code resides inside a boot sector is the first 
+program you may edit to define the functionality of the computer for the rest of the time. What I mean here is 
+you can write your own code and copy it to the boot sector to make the computer work in accordance with your 
+requisites. The program code that you intend to write to the boot sector of a device is also called as boot loader.
+
+What is a Boot Loader?
+
+In computing, a boot loader is a special program that is executed each time a bootable device is initialized 
+by the computer during its power on or reset. It is an executable machine code, which is very specific to the 
+hardware architecture of the type of CPU or microprocessor.
+
+What is Real Mode?
+
+Earlier in section “What happens when a computer boots”, I have mentioned that all x86 CPUs while booting from 
+a device start in a real mode. It is very important to make a note of this while writing a boot code for any device. 
+Real mode supports only 16-bit instructions. So the code you write to load into a boot record or boot sector of a device 
+should be compiled to only 16 bit compatible code.
+
+What are registers?
+
+Registers are like utilities of a microprocessor to store data temporarily and manipulate it as per our requirements. 
+Suppose say if the user wants to add 3 with 2, the user asks the computer to store number 3 in one register and number
+ 2 in more register and then add the contents of the these two registers and the result is placed in another register 
+ by the CPU which is the output that we desire to see. There are four types of registers and are listed below.
+
+General purpose registers
+Segment registers
+Stack registers
+Index registers
+
+Let me brief you about each of the types.
+
+General purpose registers: These are used to store temporary data required by the program during its lifecycle. 
+Each of these registers is 16 bit wide or 2 bytes long.
+
+AX - the accumulator register
+BX - the base address register
+CX - the count register
+DX - the data register
+
+Segment Registers: To represent a memory address to a microprocessor, there are two terms we need to be aware of:
+
+Segment: It is usually the beginning of the block of a memory.
+Offset: It is the index of memory block onto it.
+
+Example: Suppose say, there is a byte whose value is 'X' that is present on a block of memory whose start address 
+is 0x7c00 and the byte is located at the 10th position from the beginning. In this situation, We represent segment 
+as 0x7c00 and the offset as 10. The absolute address is 0x7c00 + 10.
+
+There are four categories that I wanted to list out.
+
+CS - code segment
+SS - stack segment
+DS - data segment
+ES - extended segment
+
+But there is always a limitation with these registers. You cannot directly assign an address to these registers. 
+What we can do is, copy the address to a general purpose registers and then copy the address from that register 
+to the segment registers.
+
+Stack Registers:
+
+BP - base pointer
+SP - stack pointer
+
+Index Registers:
+
+SI - source index register.
+DI - destination index register.
+
+AX: CPU uses it for arithmetic operations.
+BX: It can hold the address of a procedure or variable (SI, DI, and BP can also). And also perform arithmetic and data movement.
+CX: It acts as a counter for repeating or looping instructions.
+DX: It holds the high 16 bits of the product in multiply (also handles divide operations).
+CS: It holds base location for all executable instructions in a program.
+SS: It holds the base location of the stack.
+DS: It holds the default base location for variables.
+ES: It holds additional base location for memory variables.
+BP: It contains an assumed offset from the SS register. Often used by a subroutine to locate variables that were passed on the stack by a calling program.
+SP: Contains the offset of the top of the stack.
+SI: Used in string movement instructions. The source string is pointed to by the SI register.
+DI: Acts as the destination for string movement instructions.
+
+What are interrupts?
+
+To interrupt the ordinary flow of a program and to process events that require prompt response we use interrupts. 
+The hardware of a computer provides a mechanism called interrupts to handle events. For example, when a mouse is moved, 
+the mouse hardware interrupts the current program to handle the mouse movement (to move the mouse cursor, etc.) 
+Interrupts cause control to be passed to an interrupt handler. Interrupt handlers are routines that process the interrupt. 
+Each type of interrupt is assigned an integer number. At the beginning of physical memory, a table of interrupt vectors 
+resides that contain the segmented addresses of the interrupt handlers. The number of interrupt is essentially an index 
+into this table. We can also called as the interrupt as a service offered by BIOS.
+
+What is a function?
+
+A function is a block of code that has a name and it has a property that it is reusable.
+
+What is a macro?
+
+A macro is a fragment of code, which has been given a name. Whenever the name is used, 
+it is replaced by the contents of the macro.
+
+What is the difference between a macro and a function in terms of syntax?
+
+To call a function we use the below syntax.
+
+push <argument>
+call <function name>
+
+To call a macro we use the below syntax
+
+macroname <argument>
+
+But the calling and usage syntax of the macro is very simple when compared to that 
+of a function. So I preferred to write a macro and use it instead of calling a function 
+in the main code. You can refer to more materials online as to how to write assembly code on GNU Assembler.
+
+command for compiling the c file
+
+gcc -c -g -Os -march=i686 -m32 -ffreestanding -fno-exceptions -fstrength-reduce -fomit-frame-pointer -finline-functions -Wall -Werror test.c -o test.o
+
+What does each flag mean?
+
+-c: It is used to compile the given source code without linking.
+-g: Generates debug information to be used by GDB debugger.
+-Os: optimization for code size
+-march: Generates code for the specific CPU architecture (in our case i686)
+-ffreestanding: A freestanding environment is one in which the standard library may not exist, and program startup 
+                may not necessarily be at ‘main’.
+-Wall: Enable all compiler's warning messages. This option should always be used, in order to generate better code.
+-Werror: Enable warnings being treated as errors
+test.c: input source file name
+-o: generate object code
+test.o: output object code file name.
+
+What is a linker?
+
+It is the final stage of compilation. The ld(linker) takes one or more object files or libraries as input and 
+combines them to produce a single (usually executable) file. In doing so, it resolves references to external 
+symbols, assigns final addresses to procedures/functions and variables, and revises code and data to reflect 
+new addresses (a process called relocation).
+
+Also remember that we have no standard libraries and all fancy functions to use in our code.
+
+objcopy -O binary test.elf test.bin
+This command is used to generate platform independent code. 
+
+We use __asm__ keyword to embed assembly language statements into a C program. This keyword hints the compiler to 
+recognize that it is an assembly instruction given by the user.
+
+We also use __volatile__ to hint the assembler not to modify our code and let it as it is.
+
+This way of embedding assembly code inside C code is called as inline assembly.
+
+Hence, what the BIOS does is it loads 512 bytes from the drive and stores it into 0000:7C00 to 0000:7DFF, 
+and then jumps to 0000:7C00 to execute the primary boot loader code.

@@ -1,0 +1,14 @@
+https://greek0.net/elf.html
+https://developer.ibm.com/technologies/linux/tutorials/l-dynamic-libraries/
+https://linux-audit.com/elf-binaries-on-linux-understanding-and-analysis/#why-learn-the-details-of-elf
+
+What is ELF?
+
+ELF is the file format used for object files (.o's), binaries, shared libraries and core dumps in Linux.
+
+What is core dump?
+
+The Linux kernel can write a file containing the state of a process when the process receives certain signals,
+e.g. segmentation fault or illegal instruction. Such files are called core dumps and contain a snapshot of the 
+allocated memory and registers and can later be used with gdb to analyse the causes of the signal.
+

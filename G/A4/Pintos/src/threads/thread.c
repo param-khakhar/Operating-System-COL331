@@ -504,6 +504,12 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&(t->sup_page_table));
 #endif
   intr_set_level (old_level);
+
+  /*Initialize fd, and file_list*/
+
+  t->fd = 2;
+  list_init(&t->file_list);
+
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

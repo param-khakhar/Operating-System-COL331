@@ -28,8 +28,25 @@ The following is a writeup for the Assignment-4, Operating System (COL331). Ther
 
 \section*{Part A}
 
+\subsection*{Task - 1: Output of t1}
 
+After printing "Executing t1", the program terminates with the string printed "Execution of 't1' complete".
 
+\subsection*{Task - 2: MACROS Description}
+
+There are generic MACROS defined depending on the number of arguments which are called in the orginal syscall depending on the number of arguments. SYSCALL0 only takes the syscall number as the argument, SYSCALL1 takes the syscall number along with other argument, SYSCALL2 takes syscall number and two other arguments, and SYSCALL3 takes syscall number and three other arguements. All the arguments are pushed onto the stack with the syscall number at the top, along with the other arguments from top to bottom, in the same order in which the syscall is called.
+
+\subsection*{Task - 3: Waiting Function}
+The function
+\begin{verbatim}
+    int process_wait (tid_t child_tid);
+\end{verbatim}
+
+is where the kernel waits for a process to terminate. On using an infinite loop in the function the following message is printed: \\
+
+"System calls not implemented"\\
+
+\subsection*{Task - 4: }
 %   Two different parallelized versions of the summation are implemented. 
 %   \begin{itemize}
 %     \item In the first approach, nested parallelism is used, and a local variable corresponding to each thread stores the total sum for that thread, and finally the local sums from the all the threads are added in the global variable sum.

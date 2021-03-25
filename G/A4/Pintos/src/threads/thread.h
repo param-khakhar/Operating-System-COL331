@@ -94,8 +94,11 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
-    struct list_elem sleepelem;          /*List element for sleeping_list*/
-    int64_t sleepEnd;                 /* Start time for the Sleep */
+    struct list_elem sleepelem;         /*List element for sleeping_list*/
+    int64_t sleepEnd;                   /* Start time for the Sleep */
+
+    struct list file_list;              /* List of File-Aux objects which contain the file pointer and the file descriptors */
+    int fd;                             /* Current File Descriptor of the thread, starts from 2, increments by 1 each time */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

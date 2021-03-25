@@ -146,6 +146,9 @@ start_process (void *load_p)
 int
 process_wait (tid_t child_tid)
 {
+  while(true){
+    continue;
+  }
 }
 
 /* Free the current process's resources. */

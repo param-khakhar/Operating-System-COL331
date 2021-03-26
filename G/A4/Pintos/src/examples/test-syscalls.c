@@ -198,6 +198,7 @@ int main(void)
 
   SUCCESS("TEST 6: Passed\n");
 
+  // TITLE("TEST 7: ")
 
 
   TITLE("The test suite should now exit. Since SYS_WAIT is not implemented yet, the program should hang. ");

@@ -46,7 +46,29 @@ is where the kernel waits for a process to terminate. On using an infinite loop 
 
 "System calls not implemented"\\
 
-\subsection*{Task - 4: }
+\subsection*{Task - 4:}
+
+\section*{Part B}
+
+\subsection*{Task - 1: Semaphore Function Interface}
+
+Consider two threads A and B, both using a shared sempahore in order 
+to achieve mutual exclusion. Without loss of generality, assume that 
+the initial value of the semaphore is 1. If thread A, first calls, 
+sema\_down(), then the value of the semaphore would then be 
+decremented by 1, ultimately to 0. The other thread B, wouldn't 
+complete the execution of the function sema\_down(), and would go 
+to sleep. Thread B would sleep until thread A calls sema\_up(), which
+would increment the value of the semaphore back to 1, and also remove
+thread B from the waiting queue. \\
+
+\noindent
+Therefore, execution of sema\_down() followed by sema\_up() by the
+same thread, would imply entry to the mutual exclusion region for other
+competing threads.
+
+
+
 %   Two different parallelized versions of the summation are implemented. 
 %   \begin{itemize}
 %     \item In the first approach, nested parallelism is used, and a local variable corresponding to each thread stores the total sum for that thread, and finally the local sums from the all the threads are added in the global variable sum.

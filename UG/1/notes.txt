@@ -84,7 +84,7 @@ What is Real Mode?
 Earlier in section “What happens when a computer boots”, I have mentioned that all x86 CPUs while booting from 
 a device start in a real mode. It is very important to make a note of this while writing a boot code for any device. 
 Real mode supports only 16-bit instructions. So the code you write to load into a boot record or boot sector of a device 
-should be compiled to only 16 bit compatible code.
+should be compiled to only 16 bit comp	atible code.
 
 What are registers?
 

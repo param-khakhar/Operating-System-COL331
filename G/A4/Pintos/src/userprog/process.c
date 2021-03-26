@@ -48,11 +48,14 @@ process_execute (const char *file_name)
     return TID_ERROR;
 
   strlcpy (fn_copy, file_name, PGSIZE);
-
+  struct sync_aux* aux = (struct sync_aux*)malloc(sizeof(struct sync_aux));
+  sema_init(&aux->sem, 0);
+  aux->fn_clone = fn_copy;
+  aux->cmd_line = file_name;
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
-
+  tid = thread_create (file_name, PRI_DEFAULT, start_process, aux);
+  sema_down(&aux->sem);
   // free memory on error
   if(tid == TID_ERROR) {
     palloc_free_page (fn_copy);
@@ -67,7 +70,8 @@ process_execute (const char *file_name)
 static void
 start_process (void *load_p)
 {
-  char *file_name = load_p;
+  struct sync_aux* aux = (struct sync_aux *)load_p;
+  char * file_name = aux->fn_clone;
   struct intr_frame if_;
   bool success;
   char *vargs[MAX_ARGS];
@@ -88,7 +92,8 @@ start_process (void *load_p)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (vargs[0], &if_.eip, &if_.esp);
-
+  sema_up(&aux->sem);
+  
   /* If load failed, quit. */
   if (!success)
     thread_exit ();

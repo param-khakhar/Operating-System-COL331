@@ -113,6 +113,11 @@ struct thread
 #endif
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+
+    struct list children;               /*List for the child processes*/         
+    tid_t parent;                       /*Id of the parent*/
+
+    struct semaphore waitLock;          /*Semaphore used for waiting*/
   };
 
 /* If false (default), use round-robin scheduler.

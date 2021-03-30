@@ -5,7 +5,7 @@
 #include "threads/synch.h"
 
 struct sync_aux{
-  char* cmd_line;
+  const char* cmd_line;
   struct semaphore sem;
   char* fn_clone;
 };

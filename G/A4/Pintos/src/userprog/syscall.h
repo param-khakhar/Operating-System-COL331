@@ -78,6 +78,13 @@ struct wait_args{
   pid_t child;
 };
 
+struct childProcess{
+  int pid;                          //Pid of the child process
+  struct list_elem elem;            //List element for insertion deletion
+  int waiting;                      //Waiting = 1, indicates that wait has already been called once.
+  struct semaphore wait;            //Inherited from the parent, used when parent waits for the child.
+};
+
 struct lock file_lock;
 
 #endif /* userprog/syscall.h */

@@ -369,7 +369,13 @@ int sys_wait(pid_t pid){
 }
 
 pid_t sys_exec(const char* cmd_line){
-  return process_execute(cmd_line);
+
+  pid_t childPid = process_execute(cmd_line);
+  struct childProcess* child = searchChild(childPid);
+  if(!child || !child->load){
+    return ERROR;
+  }
+  return childPid;
 }
 
 struct file* getFile(int fileD){
@@ -441,4 +447,25 @@ void valid_address(const void* addr){
 void sys_exit(int status){
   printf("Exiting with Status: %d\n",status);
   thread_exit();
+}
+
+void removeChild(struct childProcess* c){
+
+
+
+}
+
+struct childProcess* searchChild(tid_t tid){
+
+  struct thread* curr = thread_current();
+  struct list_elem* head = list_begin(&curr->children);
+
+  while(head != list_end(&curr->children)){
+    struct childProcess* c = list_entry(head, struct childProcess, elem);
+    if(fa->pid == tid){
+      return c
+    }
+    head = list_next(head);
+  }
+  return NULL;
 }

@@ -48,6 +48,7 @@ process_execute (const char *file_name)
     return TID_ERROR;
 
   strlcpy (fn_copy, file_name, PGSIZE);
+
   struct sync_aux* aux = (struct sync_aux*)malloc(sizeof(struct sync_aux));
   sema_init(&aux->sem, 0);
   aux->fn_clone = fn_copy;
@@ -151,9 +152,22 @@ start_process (void *load_p)
 int
 process_wait (tid_t child_tid)
 {
-  while(true){
-    continue;
+  /*Find child_process from the list, and busy wait on the value of exit*/
+  struct childProcess* cp = searchChild(child_tid);
+  if(!cp)
+    return ERROR;
+  if(cp->wait == 1)
+    return ERROR;
+  cp->wait = 1;
+
+  if(cp->exit == 0){
+    /*Use a semaphore instead of busy waiting!*/
+    sema_down(&thread_current()->waitLock);
   }
+
+  int status = cp->status;
+  removeChild(cp);
+  return status;
 }
 
 /* Free the current process's resources. */
@@ -266,7 +280,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp);
+static bool setup_stack (void **esp, const char* cmd_line);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -386,7 +400,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp))
+  if (!setup_stack (esp, file_name))
     goto done;
 
   /* Start address. */
@@ -545,7 +559,7 @@ lazy_load_segment (struct file *file UNUSED, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp) 
+setup_stack (void **esp, const char* cmd_line) 
 {
   uint8_t *kpage;
   bool success = false;
@@ -575,7 +589,72 @@ setup_stack (void **esp)
         palloc_free_page (kpage);
 #endif
     }
-  return success;
+
+    int argc = 0;
+    int total = 2;
+    char *token, *saveptr;
+    char** store;
+    store = malloc(total * sizeof(char*));
+
+    for (token = strtok_r ((char*)cmd_line, " ", &saveptr); token != NULL; token = strtok_r (NULL, " ", &saveptr)){
+      store[argc] = token;
+      argc++;
+      if(argc >= total){
+        total *= 2;
+        store = realloc(store, total);
+      }
+    }
+
+    char** argv;
+    argv = malloc(total * sizeof(char*));
+    /*Save the tokens on the stack first*/
+
+    int i = argc-1;
+    while(i >= 0){
+      *esp = *esp - (strlen(store[i]) + 1);
+      memcpy(*esp, store[i], strlen(store[i])+1);     //Copy the arguments themselves
+      argv[i] = *esp;                                 //Assign pointers for future use within the programs.
+      i--;
+    }
+
+    argv[argc] = 0;                                   //De-limiter (NULL)
+
+    i = (size_t) *esp % 4;                            //Zeroing out the remaining locations, in case the address isn't
+                                                      // word addressable.
+    if(i != 0){
+      *esp -= i;
+      memcpy(*esp, &argv[argc], i);
+    }
+
+    /* Now push the pointers to the tokens to the stack */
+
+    i = argc;
+    while(i >= 0){
+      *esp -= sizeof(char*);
+      memcpy(*esp, &argv[i], sizeof(char*));
+      i--;
+    }
+
+    /*Now push argv itself on the stack*/
+
+    token = *esp;             
+    *esp -= sizeof(char*);
+    memcpy(*esp, &token, sizeof(char*));
+
+    /*Finally the argc, number of command line arguments*/
+
+    *esp -= sizeof(int);
+    memcpy(*esp, &argc, sizeof(int));
+
+    /*The call to main would exit, but conventionally, push the fake return address*/
+
+    *esp -= sizeof(void*);
+    memcpy(*esp, &argv[argc], sizeof(void*));
+
+    free(argv);
+    free(store);
+  
+  return success; 
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel

@@ -206,6 +206,7 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
+  sema_init(&thread->waitLock, 0);
   /* Add to run queue. */
   thread_unblock (t);
   return tid;

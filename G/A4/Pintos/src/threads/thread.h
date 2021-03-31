@@ -118,6 +118,10 @@ struct thread
     tid_t parent;                       /*Id of the parent*/
 
     struct semaphore waitLock;          /*Semaphore used for waiting*/
+    struct list dyingThreads;           /*Threads inserted to handle Wait calls*/
+
+    struct childProcess* corresp;       /*Pointer to the corresponding childProcess object */
+    char* file_name;                    /*Name of the file currently executed by the thread*/
   };
 
 /* If false (default), use round-robin scheduler.
@@ -162,4 +166,5 @@ int thread_get_load_avg (void);
 /* look through all threads and find the one with tid, else null */
 struct thread* id_to_thread(tid_t tid);
 
+int findThread(int pid);
 #endif /* threads/thread.h */

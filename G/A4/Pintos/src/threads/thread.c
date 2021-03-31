@@ -11,8 +11,10 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/malloc.h"
 #ifdef USERPROG
 #include "userprog/process.h"
+#include "userprog/syscall.h"
 #endif
 #ifdef VM
 #include "vm/sup_page.h"
@@ -191,6 +193,8 @@ thread_create (const char *name, int priority,
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
 
+  t->parent = thread_tid();
+
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
   kf->eip = NULL;
@@ -206,10 +210,18 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
-  sema_init(&thread->waitLock, 0);
+  struct childProcess* child;
+  child = malloc(sizeof(struct childProcess));
+  child->pid = tid;
+  child->waiting = 0;
+  sema_init(&child->waitLock, 0);
+  list_push_back(&thread_current()->children, &child->elem);
+  t->corresp = child;
+  
+
   /* Add to run queue. */
   thread_unblock (t);
-  return tid;
+  return tid; 
 }
 
 /* Puts the current thread to sleep.  It will not be scheduled
@@ -505,11 +517,11 @@ init_thread (struct thread *t, const char *name, int priority)
 #endif
   intr_set_level (old_level);
 
-  /*Initialize fd, and file_list*/
+  /*Initialize fd, and file_list, also children*/
 
   t->fd = 2;
   list_init(&t->file_list);
-
+  list_init(&t->children);
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -629,3 +641,16 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+int findThread(int pid){
+  struct list_elem* head = list_begin(&all_list);
+
+  while(head != list_end(&all_list)){
+    struct thread* t = list_entry(head, struct thread, elem);
+    if(t->tid == pid){
+      return 1;
+    }
+    head = list_next(head);
+  }
+  return 0;
+}

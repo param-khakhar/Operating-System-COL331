@@ -82,9 +82,14 @@ struct childProcess{
   int pid;                          //Pid of the child process
   struct list_elem elem;            //List element for insertion deletion
   int waiting;                      //Waiting = 1, indicates that wait has already been called once.
-  struct semaphore wait;            //Inherited from the parent, used when parent waits for the child.
+  struct semaphore waitLock;        //Inherited from the parent, used when parent waits for the child.
+  int exit;                         //Attribute indicating whether the thread has exited or not.
+  int status;                       //Status to be returned to the parent process.
+  int load;                         //Whether the child has loaded correctly or not.
 };
 
 struct lock file_lock;
-
+struct childProcess* searchChild(tid_t tid);
+void removeChild(pid_t id, bool all);
+void sys_close(int fileDes, bool close_all);
 #endif /* userprog/syscall.h */

@@ -212,11 +212,15 @@ syscall_handler (struct intr_frame *f)
       break;
     
     case SYS_EXIT:
-      printf("Exit System Call\n");
-      thread_exit();
+      // printf("Exit System Call\n");
+      check(f->esp,1);
+      struct exit_args* exit = (struct exit_args*)f->esp;
+      printf("%s: %s\n",thread_name(), "exit(%d)",exit->status);
+      sys_exit(exit->status);
+      break;
 
     case SYS_EXEC:
-      printf("Exec System Call\n");
+      // printf("Exec System Call\n");
       check(f->esp, 1);
       struct exec_args* exec = (struct exec_args*)f->esp;
       arg = convert(exec->cmd_line);
@@ -224,7 +228,7 @@ syscall_handler (struct intr_frame *f)
       break;
 
     case SYS_WAIT:
-      printf("Wait System Call\n");
+      // printf("Wait System Call\n");
       check(f->esp, 1);
       struct wait_args* wait = (struct wait_args*)f->esp;
       f->eax = sys_wait(wait->child);
@@ -236,7 +240,6 @@ syscall_handler (struct intr_frame *f)
   }
   // thread_exit();
 }
-
 
 int sys_open(const char* name){
   /* Auxiliary function for opening the file */
@@ -365,7 +368,8 @@ int sys_fileSize(int fd){
 }
 
 int sys_wait(pid_t pid){
-  return 0;
+
+  return process_wait(pid);
 }
 
 pid_t sys_exec(const char* cmd_line){
@@ -376,6 +380,17 @@ pid_t sys_exec(const char* cmd_line){
     return ERROR;
   }
   return childPid;
+}
+
+void sys_exit(int status){
+  struct thread* t = thread_current();
+  if(findThread(t->parent) && t->corresp){
+    if(status < 0)
+      status = -1;
+    t->corresp->status = status;
+  }
+  sema_up(&t->corresp->waitLock);
+  thread_exit();
 }
 
 struct file* getFile(int fileD){
@@ -439,20 +454,29 @@ void* convert(const void* loc){
 }
 
 void valid_address(const void* addr){
-  if(!is_user_vaddr(addr)){
+  if(!is_user_vaddr(addr) || addr >= PHYS_BASE){
     sys_exit(ERROR);
   }
 }
 
-void sys_exit(int status){
-  printf("Exiting with Status: %d\n",status);
-  thread_exit();
-}
+void removeChild(pid_t id, bool all){
 
-void removeChild(struct childProcess* c){
+  struct thread* curr = thread_current();
+  struct list_elem* head = list_begin(&curr->children);
 
-
-
+  while(head != list_end(&curr->children)){
+    struct childProcess* c = list_entry(head, struct childProcess, elem);
+    if(all){
+      list_remove(&c->elem);
+      free(c);
+    }
+    else if(c->pid == id){
+      list_remove(&c->elem);
+      free(c);
+      return;
+    }
+    head = list_next(head);
+  }
 }
 
 struct childProcess* searchChild(tid_t tid){
@@ -462,8 +486,8 @@ struct childProcess* searchChild(tid_t tid){
 
   while(head != list_end(&curr->children)){
     struct childProcess* c = list_entry(head, struct childProcess, elem);
-    if(fa->pid == tid){
-      return c
+    if(c->pid == tid){
+      return c;
     }
     head = list_next(head);
   }

@@ -19,6 +19,7 @@
 #include "threads/vaddr.h"
 #include "threads/synch.h"
 #include "threads/malloc.h"
+#include "userprog/syscall.h"
 #ifdef VM
 #include "vm/frame.h"
 #include "vm/sup_page.h"
@@ -35,6 +36,7 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 tid_t
 process_execute (const char *file_name) 
 {
+
   char *fn_copy;
   tid_t tid;
 
@@ -78,58 +80,31 @@ start_process (void *load_p)
   char *vargs[MAX_ARGS];
   int nargs = 0;
   int argssize = strlen(file_name) + 1;
+  int debug = 0;
 
   /* tokenize command line */
-  char *token, *save_ptr;
-  for (token = strtok_r (file_name, " ", &save_ptr); token != NULL;
-        token = strtok_r (NULL, " ", &save_ptr)) {
-   vargs[nargs++] = token;
-   ASSERT(nargs < MAX_ARGS);
-  }
+  // char *token, *save_ptr;
+  // for (token = strtok_r (file_name, " ", &save_ptr); token != NULL;
+  //       token = strtok_r (NULL, " ", &save_ptr)) {
+  //  vargs[nargs++] = token;
+  //  ASSERT(nargs < MAX_ARGS);
+  // }
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (vargs[0], &if_.eip, &if_.esp);
-  sema_up(&aux->sem);
+  success = load (file_name, &if_.eip, &if_.esp);
   
   /* If load failed, quit. */
-  if (!success)
+  sema_up(&aux->sem);
+  if (!success){
     thread_exit ();
+  }
+  
+    palloc_free_page (file_name);
 
-  /* build the stack from the given arguments */
-  char* esp = if_.esp;
-  esp -= argssize;
-  memcpy(esp, load_p, argssize);
-  /* let's adjust the vargs pointers to point to this area */
-  size_t offs = (char*)vargs[0] - esp;
-  for(int i=0;i<nargs;i++) vargs[i] = vargs[i] - offs;
-  /* align to word boundary */
-  esp -= (size_t)esp%4;
-  /* get null in */
-  esp -= sizeof(char*); 
-  /* push arg references right to left */
-  esp -= sizeof(char*) * nargs;
-  memcpy(esp, vargs, sizeof(char*) * nargs);
-  /* push vargs */
-  char** temp = (char**)esp;
-  esp -= sizeof(char**);
-  *(char***) esp = temp;
-  /* push nargs */
-  esp -= sizeof(int);
-  *(int*) esp = nargs;
-  /* return address */
-  esp -= sizeof(void *);
-  *(void **)esp = NULL;
- 
-  /* no need for file_name anymore */
-  palloc_free_page (file_name);
- 
-//  hex_dump(esp, esp, (char*)if_.esp - esp, true);
-
-  if_.esp = esp;
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -156,17 +131,16 @@ process_wait (tid_t child_tid)
   struct childProcess* cp = searchChild(child_tid);
   if(!cp)
     return ERROR;
-  if(cp->wait == 1)
+  if(cp->waiting == 1)
     return ERROR;
-  cp->wait = 1;
+  cp->waiting = 1;
 
   if(cp->exit == 0){
     /*Use a semaphore instead of busy waiting!*/
-    sema_down(&thread_current()->waitLock);
+    sema_down(&cp->waitLock);
   }
-
   int status = cp->status;
-  removeChild(cp);
+  removeChild(child_tid, false);
   return status;
 }
 
@@ -176,6 +150,16 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+
+  lock_acquire(&file_lock);
+  sys_close(0, true);
+  lock_release(&file_lock);
+
+  removeChild(0, true);
+
+  if(findThread(cur->parent)){
+    cur->corresp->exit = 1; 
+  }
 
 #ifdef VM
   /* close also the exec file assoiated with this */
@@ -311,8 +295,13 @@ load (const char *file_name, void (**eip) (void), void **esp)
     goto done;
   process_activate ();
 
+  char* saveptr;
+  char* split = malloc(strlen(file_name)+1);
+  strlcpy(split, file_name, strlen(file_name)+1);
+
+  split = strtok_r(split," ",&saveptr);
   /* Open executable file. */
-  file = filesys_open (file_name);
+  file = filesys_open (split);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
@@ -589,70 +578,81 @@ setup_stack (void **esp, const char* cmd_line)
         palloc_free_page (kpage);
 #endif
     }
-
+    // printf("%s\n",cmd_line);
+    char* argv[MAX_ARGS];
     int argc = 0;
-    int total = 2;
     char *token, *saveptr;
-    char** store;
-    store = malloc(total * sizeof(char*));
-
+    int current = 2;
     for (token = strtok_r ((char*)cmd_line, " ", &saveptr); token != NULL; token = strtok_r (NULL, " ", &saveptr)){
-      store[argc] = token;
+      argv[argc] = token;
       argc++;
-      if(argc >= total){
-        total *= 2;
-        store = realloc(store, total);
-      }
     }
-
-    char** argv;
-    argv = malloc(total * sizeof(char*));
+    int debug = 0;
     /*Save the tokens on the stack first*/
 
     int i = argc-1;
     while(i >= 0){
-      *esp = *esp - (strlen(store[i]) + 1);
-      memcpy(*esp, store[i], strlen(store[i])+1);     //Copy the arguments themselves
-      argv[i] = *esp;                                 //Assign pointers for future use within the programs.
+      *esp -= (strlen(argv[i]) + 1);
+      debug += (strlen(argv[i])+1);
+      memcpy(*esp, argv[i], strlen(argv[i])+1);     //Copy the arguments themselves
+      argv[i] = *esp;
+      //printf("%s\n",*esp);
+      //printf("Saved: %p\n",argv[i]);
       i--;
     }
 
-    argv[argc] = 0;                                   //De-limiter (NULL)
-
-    i = (size_t) *esp % 4;                            //Zeroing out the remaining locations, in case the address isn't
+    i = (PHYS_BASE - *esp) % 4;                       //Zeroing out the remaining locations, in case the address isn't
                                                       // word addressable.
+    uint8_t zero = 0;
     if(i != 0){
-      *esp -= i;
-      memcpy(*esp, &argv[argc], i);
+      *esp -= (4-i);
+      debug += (4-i);
+      memcpy(*esp, &zero, (4-i)*sizeof(uint8_t));
+      //printf("Aligned: %p\n",*esp);
     }
 
-    /* Now push the pointers to the tokens to the stack */
+    /*Push Null*/
+    int Zero = 0;
+    *esp -= sizeof(char*);
+    debug += sizeof(char*);
+    memcpy(*esp, &Zero, sizeof(char*));
 
-    i = argc;
+    /* Now push the pointers to the tokens on the stack */
+    void* temp, *temp1;
+    temp = *esp;
+    //printf("Address-1: %p %s\n",*esp, *(char*)(temp));
+    // temp = *esp;
+    // printf("Address-1: %p %p\n", *(char*)temp,*esp);
+    i = argc-1;
     while(i >= 0){
       *esp -= sizeof(char*);
+      debug += sizeof(char*);
       memcpy(*esp, &argv[i], sizeof(char*));
+      temp1 = *esp;
       i--;
     }
-
     /*Now push argv itself on the stack*/
-
-    token = *esp;             
-    *esp -= sizeof(char*);
-    memcpy(*esp, &token, sizeof(char*));
-
+    token = *esp;
+    *esp -= sizeof(char**);
+    debug += sizeof(char**);
+    memcpy(*esp, &token, sizeof(char**));
+    //printf("Stack: %p %p\n",*esp);
     /*Finally the argc, number of command line arguments*/
 
     *esp -= sizeof(int);
+    debug += sizeof(int);
     memcpy(*esp, &argc, sizeof(int));
-
+    //printf("Stack: %p\n",*esp);
     /*The call to main would exit, but conventionally, push the fake return address*/
 
-    *esp -= sizeof(void*);
-    memcpy(*esp, &argv[argc], sizeof(void*));
+    *esp -= sizeof(int);
+    debug += sizeof(int);
+    memcpy(*esp, &Zero, sizeof(int));
+    //printf("Stack: %p\n",*esp);
+    //hex_dump(0, *esp, debug, 1);
 
-    free(argv);
-    free(store);
+
+    // //free(argv);
   
   return success; 
 }

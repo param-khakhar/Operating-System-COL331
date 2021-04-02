@@ -213,10 +213,12 @@ thread_create (const char *name, int priority,
   struct childProcess* child;
   child = malloc(sizeof(struct childProcess));
   child->pid = tid;
+  // printf("Create Child: %d, by parent: %d\n",tid, thread_tid());
   child->waiting = 0;
   sema_init(&child->waitLock, 0);
   list_push_back(&thread_current()->children, &child->elem);
   t->corresp = child;
+  t->corresp->status = 0;
   
 
   /* Add to run queue. */

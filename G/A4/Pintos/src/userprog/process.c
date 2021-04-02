@@ -128,6 +128,7 @@ int
 process_wait (tid_t child_tid)
 {
   /*Find child_process from the list, and busy wait on the value of exit*/
+  // printf("Wait for: %d, Parent(current): %d\n",child_tid, thread_tid());
   struct childProcess* cp = searchChild(child_tid);
   if(!cp)
     return ERROR;
@@ -135,11 +136,13 @@ process_wait (tid_t child_tid)
     return ERROR;
   cp->waiting = 1;
 
-  if(cp->exit == 0){
+  if(cp->exit_status == 0){
     /*Use a semaphore instead of busy waiting!*/
+    // printf("CPID: %d\n",cp->pid);
     sema_down(&cp->waitLock);
   }
   int status = cp->status;
+  // printf("StatusW: %d, Tid: %d\n",status,thread_tid());
   removeChild(child_tid, false);
   return status;
 }
@@ -151,14 +154,12 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
-  lock_acquire(&file_lock);
   sys_close(0, true);
-  lock_release(&file_lock);
 
   removeChild(0, true);
 
   if(findThread(cur->parent)){
-    cur->corresp->exit = 1; 
+    cur->corresp->exit_status = 1; 
   }
 
 #ifdef VM
@@ -401,6 +402,11 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /* We arrive here whether the load is successful or not. */
 /* Do not close this anymore - file will be used in exception.c page fault */
 //  file_close (file);
+  // thread_current()->corresp->exit_status = 1;
+  if(!success)
+    thread_current()->corresp->status = -1;
+  else
+    thread_current()->corresp->load_status = 1;
   return success;
 }
 
@@ -578,7 +584,6 @@ setup_stack (void **esp, const char* cmd_line)
         palloc_free_page (kpage);
 #endif
     }
-    // printf("%s\n",cmd_line);
     char* argv[MAX_ARGS];
     int argc = 0;
     char *token, *saveptr;

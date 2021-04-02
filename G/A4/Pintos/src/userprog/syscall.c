@@ -87,8 +87,8 @@ put_user (uint8_t *udst, uint8_t byte) {
 bool validate_user_addr_range(uint8_t *va, size_t bcnt, uint32_t* esp, bool exact) {
   if(va == NULL)  /* NULL is not allowed */
     return false;
-  for(size_t i=0; (i<bcnt) || !exact; i++) {
-    if(!is_user_vaddr(va+i)) /* outside user space! wrong */
+  for(size_t i=0; (i<bcnt) || !exact; i++) { 
+    if(!is_user_vaddr(va+i) || (va+i) < (void*)0x08048000) /* outside user space! wrong */
       return false;
     int w = get_user(va+i);
     if(!exact && w == 0) /* end of string */
@@ -123,13 +123,22 @@ syscall_handler (struct intr_frame *f)
     lock_flag = false;
   }
 
-  // printf("System calls not implemented correctly.\n");
 
   // void* stack_pointer;
+  // printf("Syscalls Not Implemented Correctly\n");
   int syscall_number;
   void* arg;
-  syscall_number = *(int *)convert(f->esp);
-
+  // if(!validate_user_addr_range((uint8_t*)f->esp, 4, f->esp, true) || !validate_user_addr_range((uint8_t*)(f->esp+4), 4, f->esp, true))
+  //   sys_exit(ERROR);
+  
+  if(!validate_user_addr_range((uint8_t*)f->esp, 4, f->esp, true))
+    sys_exit(ERROR);
+  // printf("Normal: %p\n",f->esp);
+  // printf("here\n");
+  // printf("Converted: %p, Normal: \n",convert(f->esp), f->esp);
+  // syscall_number = *(int *)convert(f->esp);
+  syscall_number = *(int*)(f->esp);
+  // printf("%d\n",syscall_number);
   switch(syscall_number){
 
     case SYS_CREATE:
@@ -137,9 +146,10 @@ syscall_handler (struct intr_frame *f)
       // printf("Create System Call\n");
       check(f->esp, 2);
       struct create_args* create = (struct create_args*)f->esp;
+      if(!validate_user_addr_range((uint8_t*)(create->file), sizeof(create->file), f->esp, false))
+        sys_exit(ERROR);
       check_str(create->file);
-      arg = convert(create->file);
-      f->eax = sys_create(arg, create->initial_size);
+      f->eax = sys_create(create->file, create->initial_size);
       break;
 
     case SYS_REMOVE:
@@ -147,9 +157,10 @@ syscall_handler (struct intr_frame *f)
       // printf("Remove System Call\n");
       check(f->esp, 1);
       struct remove_args* remove = (struct remove_args*)f->esp;
+      if(!validate_user_addr_range((uint8_t*)(remove->file), sizeof(remove->file), f->esp, false))
+        sys_exit(ERROR);
       check_str(remove->file);
-      arg = convert(remove->file);
-      f->eax = sys_remove(arg);
+      f->eax = sys_remove(remove->file);
       break;
 
     case SYS_OPEN:
@@ -157,9 +168,10 @@ syscall_handler (struct intr_frame *f)
       // printf("Open System Call\n");
       check(f->esp, 1);
       struct open_args* open = (struct open_args*)f->esp;
-      check_str(open->file);
-      arg = convert(open->file);      
-      f->eax = sys_open(arg);
+      if(!validate_user_addr_range((uint8_t*)(open->file), sizeof(open->file), f->esp, false))
+        sys_exit(ERROR);
+      check_str(open->file);    
+      f->eax = sys_open(open->file);
       break;
 
     case SYS_CLOSE:
@@ -175,7 +187,9 @@ syscall_handler (struct intr_frame *f)
       // printf("Read System Call\n");
       check(f->esp,3);
       struct read_args* read = (struct read_args* )f->esp;
-      check_buffer(read->buffer, read->size);
+      if(!validate_user_addr_range((uint8_t*)(read->buffer), sizeof(read->buffer), f->esp, true))
+        sys_exit(ERROR);
+      // check_buffer(read->buffer, read->size);
       arg = convert(read->buffer);
       f->eax = sys_read(read->fd, arg, read->size);
       break;
@@ -185,9 +199,10 @@ syscall_handler (struct intr_frame *f)
       // printf("Write System Call\n");
       check(f->esp, 3);
       struct write_args* write = (struct write_args *)f->esp;
+      if(!validate_user_addr_range((uint8_t*)(write->buffer), write->size, f->esp, true))
+        sys_exit(ERROR);
       check_buffer(write->buffer, write->size);
-      arg = convert(write->buffer);
-      f->eax = sys_write(write->fd, arg, write->size);
+      f->eax = sys_write(write->fd, write->buffer, write->size);
       break;
 
     case SYS_SEEK:
@@ -215,7 +230,6 @@ syscall_handler (struct intr_frame *f)
       // printf("Exit System Call\n");
       check(f->esp,1);
       struct exit_args* exit = (struct exit_args*)f->esp;
-      printf("%s: %s\n",thread_name(), "exit(%d)",exit->status);
       sys_exit(exit->status);
       break;
 
@@ -223,14 +237,17 @@ syscall_handler (struct intr_frame *f)
       // printf("Exec System Call\n");
       check(f->esp, 1);
       struct exec_args* exec = (struct exec_args*)f->esp;
-      arg = convert(exec->cmd_line);
-      sys_exec(arg);
+      convert(exec->cmd_line);
+      if(!validate_user_addr_range((uint8_t*)(exec->cmd_line), sizeof(exec->cmd_line), f->esp, false))
+        sys_exit(ERROR);
+      f->eax = sys_exec(exec->cmd_line);
       break;
 
     case SYS_WAIT:
       // printf("Wait System Call\n");
       check(f->esp, 1);
       struct wait_args* wait = (struct wait_args*)f->esp;
+      // printf("SyscallWait for :%ld\n",(long)wait->child);
       f->eax = sys_wait(wait->child);
       break;
 
@@ -376,20 +393,31 @@ pid_t sys_exec(const char* cmd_line){
 
   pid_t childPid = process_execute(cmd_line);
   struct childProcess* child = searchChild(childPid);
-  if(!child || !child->load){
+  if(!child || !child->load_status){
+    // printf("Here\n");
+    // if(!child)
+    //   printf("Not Child\n");
+    // if(!child->load_status)
+    //   printf("Not Load Status\n");
     return ERROR;
   }
+  // printf("Returning-ChildPid: %d, from Parent: %d\n",childPid, thread_tid());
   return childPid;
 }
 
 void sys_exit(int status){
   struct thread* t = thread_current();
-  if(findThread(t->parent) && t->corresp){
-    if(status < 0)
+  if(t->corresp->status < 0){
       status = -1;
+      printf("%s: exit(%d)\n",thread_name(), status);
+  }
+  else{
     t->corresp->status = status;
+    // printf("StatusP: %d %d\n",t->corresp->status, thread_tid());
+    printf("%s: exit(%d)\n",thread_name(), status);
   }
   sema_up(&t->corresp->waitLock);
+  // printf("%s: exit(%d)\n",thread_name(), status);
   thread_exit();
 }
 
@@ -425,7 +453,9 @@ void check(void* sp, int desired){
   int *addr;
   for(int i=0;i<=desired;i++){
     addr = (int*)sp + i;
-    valid_address((const void*)addr);
+    if(!validate_user_addr_range((uint8_t*)addr, 4, sp, true))
+      sys_exit(ERROR);
+    // valid_address((const void*)addr);
   }
 }
 

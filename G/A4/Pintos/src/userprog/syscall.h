@@ -83,9 +83,9 @@ struct childProcess{
   struct list_elem elem;            //List element for insertion deletion
   int waiting;                      //Waiting = 1, indicates that wait has already been called once.
   struct semaphore waitLock;        //Inherited from the parent, used when parent waits for the child.
-  int exit;                         //Attribute indicating whether the thread has exited or not.
+  int exit_status;                         //Attribute indicating whether the thread has exited or not.
   int status;                       //Status to be returned to the parent process.
-  int load;                         //Whether the child has loaded correctly or not.
+  int load_status;                         //Whether the child has loaded correctly or not.
 };
 
 struct lock file_lock;

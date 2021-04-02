@@ -42,7 +42,7 @@
 #define WHT   "\x1B[37m"
 #define RESET "\x1B[0m"
 
-#define TITLE(x) printf(WHT x RESET)
+#define TITLE(x); printf(WHT x RESET)
 #define ERROR(x, ...) printf(RED "ERR: " x RESET, ##__VA_ARGS__); halt()
 #define SUCCESS(x) printf(GRN x RESET)
 
@@ -51,9 +51,11 @@ int main(void)
   char *dummyprint = "Hello, world!\n";
   char *testdata = "sample file content";
   bool created;
+  bool removed;
   int fd;
   int bytes_written;
   int bytes_read;
+  int size;
   char sbuf[READ_SIZE];
 
 
@@ -200,10 +202,73 @@ int main(void)
 
   // TITLE("TEST 7: ")
 
+  TITLE("TEST 7: Size of File\n");
+  created = create("test1", 10);
+  fd = open("test1");
+  size = filesize(fd);
+  if(size != 10)
+  {
+    ERROR("File of Size: %d, but reported by syscall as %d",10,size); 
+  }
+  close(fd);
 
-  TITLE("The test suite should now exit. Since SYS_WAIT is not implemented yet, the program should hang. ");
-  TITLE("If it does, it means that all tests were successful.\n");
-  exit(0);
+  SUCCESS("TEST 7: Passed\n");
 
-  ERROR("ERR: Thread did not exit.\n");
+  TITLE("TEST 8: Testing REMOVE\n");
+
+  created = create("test2", 20);
+  removed = remove("test2");
+
+  if(removed)
+  {
+    fd = open("test2");
+    if(fd > 0)
+    {
+      ERROR("Opened a Deleted File!\n");
+    }
+    else
+    {
+      SUCCESS("TEST 8: Passed\n");
+    }
+  }
+  else
+  {
+    ERROR("Cannot remove the file, \"test2\", already deleted?\n");
+  }
+
+  TITLE("TEST 9: Testing SEEK\n");
+
+  created = create("test3",20);
+  fd = open("test3");
+  bytes_written = write(fd, testdata, strlen(testdata));  
+  seek(fd, 5);
+  bytes_read = read(fd, sbuf, READ_SIZE);
+  if (bytes_read < 0 || (size_t)bytes_read != strlen(testdata)-4)
+  {
+    ERROR("Failed to read %d bytes from file, read %d.\n", strlen(testdata), bytes_read);
+  }
+  else
+  {
+    SUCCESS("After doing a seek for 5 positions, number of bytes read strlen(testdata) - (5-1)\n");
+  }
+  
+
+  // if (memcmp(sbuf, testdata, strlen(testdata)) != 0)
+  // {
+  //   ERROR("Read content does not match what was written to file.\n");
+  // }
+
+
+  TITLE("TEST 10: Testing HALT\n") 
+
+
+  TITLE("The test suite would now test SYS_HALT, if you are able to see another print, statement.....\n");
+
+  // TITLE("The test suite should now exit. Since SYS_WAIT is not implemented yet, the program should hang. ");
+  // TITLE("If it does, it means that all tests were successful.\n");
+//  exit(0);
+
+//  ERROR("ERR: Thread did not exit.\n");
+  halt();
+  ERROR("Why are you seeing this print?");
 }

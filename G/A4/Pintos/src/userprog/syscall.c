@@ -3,7 +3,7 @@
 #include <syscall-nr.h>
 #include <string.h>
 #include "threads/interrupt.h"
-#include "threads/malloc.h"
+#include "threads/malloc.h" 
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
@@ -43,7 +43,6 @@ void check(void* sp, int desired);
 void check_str(const void* str);
 void check_buffer(const void* buffer, unsigned size);
 void* convert(const void* loc);
-void valid_address(const void* addr);
 
 void
 syscall_init (void) 
@@ -123,22 +122,14 @@ syscall_handler (struct intr_frame *f)
     lock_flag = false;
   }
 
-
-  // void* stack_pointer;
-  // printf("Syscalls Not Implemented Correctly\n");
   int syscall_number;
   void* arg;
   // if(!validate_user_addr_range((uint8_t*)f->esp, 4, f->esp, true) || !validate_user_addr_range((uint8_t*)(f->esp+4), 4, f->esp, true))
   //   sys_exit(ERROR);
-  
+  //printf("Syscalls Not implemented Correctly\n");
   if(!validate_user_addr_range((uint8_t*)f->esp, 4, f->esp, true))
     sys_exit(ERROR);
-  // printf("Normal: %p\n",f->esp);
-  // printf("here\n");
-  // printf("Converted: %p, Normal: \n",convert(f->esp), f->esp);
-  // syscall_number = *(int *)convert(f->esp);
   syscall_number = *(int*)(f->esp);
-  // printf("%d\n",syscall_number);
   switch(syscall_number){
 
     case SYS_CREATE:
@@ -148,6 +139,7 @@ syscall_handler (struct intr_frame *f)
       struct create_args* create = (struct create_args*)f->esp;
       if(!validate_user_addr_range((uint8_t*)(create->file), sizeof(create->file), f->esp, false))
         sys_exit(ERROR);
+      //Check for unmapped addresses (if any).
       check_str(create->file);
       f->eax = sys_create(create->file, create->initial_size);
       break;
@@ -189,9 +181,8 @@ syscall_handler (struct intr_frame *f)
       struct read_args* read = (struct read_args* )f->esp;
       if(!validate_user_addr_range((uint8_t*)(read->buffer), sizeof(read->buffer), f->esp, true))
         sys_exit(ERROR);
-      // check_buffer(read->buffer, read->size);
-      arg = convert(read->buffer);
-      f->eax = sys_read(read->fd, arg, read->size);
+      check_buffer(read->buffer, read->size);
+      f->eax = sys_read(read->fd, read->buffer, read->size);
       break;
 
     case SYS_WRITE:
@@ -237,9 +228,9 @@ syscall_handler (struct intr_frame *f)
       // printf("Exec System Call\n");
       check(f->esp, 1);
       struct exec_args* exec = (struct exec_args*)f->esp;
-      convert(exec->cmd_line);
       if(!validate_user_addr_range((uint8_t*)(exec->cmd_line), sizeof(exec->cmd_line), f->esp, false))
         sys_exit(ERROR);
+      check_str(exec->cmd_line);
       f->eax = sys_exec(exec->cmd_line);
       break;
 
@@ -247,12 +238,11 @@ syscall_handler (struct intr_frame *f)
       // printf("Wait System Call\n");
       check(f->esp, 1);
       struct wait_args* wait = (struct wait_args*)f->esp;
-      // printf("SyscallWait for :%ld\n",(long)wait->child);
       f->eax = sys_wait(wait->child);
       break;
 
     default:
-      printf("Default!\n");
+      // printf("Default!\n");
       break;
   }
   // thread_exit();
@@ -455,14 +445,13 @@ void check(void* sp, int desired){
     addr = (int*)sp + i;
     if(!validate_user_addr_range((uint8_t*)addr, 4, sp, true))
       sys_exit(ERROR);
-    // valid_address((const void*)addr);
   }
 }
 
 void check_buffer(const void* buffer, unsigned size){
   char* curr = (char*)buffer;
   for(unsigned i=0;i<size;i++){
-    valid_address((const void*)curr);
+    convert((const void*)curr);
     curr++; 
   }
 }
@@ -481,12 +470,6 @@ void* convert(const void* loc){
     sys_exit(ERROR);
   }
   return kernel_addr;
-}
-
-void valid_address(const void* addr){
-  if(!is_user_vaddr(addr) || addr >= PHYS_BASE){
-    sys_exit(ERROR);
-  }
 }
 
 void removeChild(pid_t id, bool all){

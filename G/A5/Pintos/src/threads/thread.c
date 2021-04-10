@@ -12,6 +12,7 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
+#include "userprog/syscall.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #include "userprog/syscall.h"
@@ -176,6 +177,7 @@ tid_t
 thread_create (const char *name, int priority,
                thread_func *function, void *aux) 
 {
+
   struct thread *t;
   struct kernel_thread_frame *kf;
   struct switch_entry_frame *ef;
@@ -195,6 +197,7 @@ thread_create (const char *name, int priority,
 
   t->parent = thread_tid();
 
+  enum intr_level old_level = intr_disable();
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
   kf->eip = NULL;
@@ -209,20 +212,19 @@ thread_create (const char *name, int priority,
   sf = alloc_frame (t, sizeof *sf);
   sf->eip = switch_entry;
   sf->ebp = 0;
-
-  struct childProcess* child;
-  child = malloc(sizeof(struct childProcess));
-  child->pid = tid;
-  // printf("Create Child: %d, by parent: %d\n",tid, thread_tid());
-  child->waiting = 0;
-  sema_init(&child->waitLock, 0);
-  list_push_back(&thread_current()->children, &child->elem);
-  t->corresp = child;
-  t->corresp->status = 0;
-  
-
+  intr_set_level(old_level);
   /* Add to run queue. */
   thread_unblock (t);
+
+  old_level = intr_disable();
+  int one = t->priority;
+  int two = thread_get_priority();
+  if(one > two){
+    //hack1();
+    thread_yield();
+  }
+  // hack1();
+  intr_set_level(old_level);
   return tid; 
 }
 
@@ -259,7 +261,10 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  // list_push_back(&ready_list, &t->elem);
+  // list_sort(&ready_list, Compare, NULL);
+  // printf("Entered Priority: %d\n",t->priority);
+  list_insert_ordered(&ready_list, &t->elem, (list_less_func*)Compare, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -336,7 +341,8 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    list_insert_ordered(&ready_list, &cur->elem, (list_less_func*)Compare, NULL);
+    //list_push_back (&ready_list, &cur->elem);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -378,14 +384,22 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  int prev = thread_current()->currentPriority;
+  thread_current()->priority = new_priority;
+  struct list_elem* head = list_begin(&thread_current()->donatedPriority);
+  if(head == list_end(&thread_current()->donatedPriority))
+    thread_current()->currentPriority = new_priority;
+
+  if(new_priority < prev){
+    hack1();
+  }
 }
 
 /* Returns the current thread's priority. */
 int
 thread_get_priority (void) 
 {
-  return thread_current ()->priority;
+  return thread_current()->currentPriority;
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -524,6 +538,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->fd = 2;
   list_init(&t->file_list);
   list_init(&t->children);
+  list_init(&t->donatedPriority);
+  t->currentPriority = priority;
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -548,9 +564,9 @@ static struct thread *
 next_thread_to_run (void) 
 {
   if (list_empty (&ready_list))
-    return idle_thread;
-  else
-    return list_entry (list_pop_front (&ready_list), struct thread, elem);
+    return idle_thread; 
+
+  return list_entry (list_pop_front (&ready_list), struct thread, elem);
 }
 
 /* Completes a thread switch by activating the new thread's page
@@ -655,4 +671,39 @@ int findThread(int pid){
     head = list_next(head);
   }
   return 0;
+}
+
+bool Compare(struct list_elem* l1, struct list_elem* l2, void *aux){
+  struct thread* t1 = list_entry(l1, struct thread, elem);
+  struct thread* t2 = list_entry(l2, struct thread, elem);
+
+  int p1 = t1->currentPriority;
+  int p2 = t2->currentPriority;
+
+  return p1 > p2;
+}
+
+bool Compare2(struct list_elem* l1, struct list_elem* l2, void *aux){
+
+  struct thread* t1 = list_entry(l1, struct thread, donated);
+  struct thread* t2 = list_entry(l2, struct thread, donated);
+
+  int p1 = t1->currentPriority;
+  int p2 = t2->currentPriority;
+
+  return p1 > p2;
+}
+
+void hack1(){
+    if (!list_empty(&ready_list)) {
+    struct thread * next_thread = 
+      list_entry(list_begin(&ready_list), struct thread, elem);
+
+      // printf("check_priority %d\n", next_thread->priority);
+
+    if (thread_current()->priority < next_thread->priority) {
+      thread_yield();
+      // printf("check_priority %d\n", thread_current()->priority);
+    }
+  }
 }

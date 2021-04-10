@@ -94,8 +94,11 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
-    struct list_elem sleepelem;          /*List element for sleeping_list*/
-    int64_t sleepEnd;                 /* Start time for the Sleep */
+    struct list_elem sleepelem;         /*List element for sleeping_list*/
+    int64_t sleepEnd;                   /* Start time for the Sleep */
+
+    struct list file_list;              /* List of File-Aux objects which contain the file pointer and the file descriptors */
+    int fd;                             /* Current File Descriptor of the thread, starts from 2, increments by 1 each time */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -110,6 +113,27 @@ struct thread
 #endif
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+
+    struct list children;               /*List for the child processes*/         
+    tid_t parent;                       /*Id of the parent*/
+
+    struct semaphore waitLock;          /*Semaphore used for waiting*/
+    struct list dyingThreads;           /*Threads inserted to handle Wait calls*/
+
+    struct childProcess* corresp;       /*Pointer to the corresponding childProcess object */
+    char* file_name;                    /*Name of the file currently executed by the thread*/
+
+    int currentPriority;                /*current Priority of the thread*/
+    struct list donatedPriority;        /*List of threads which have donated their priority to this thread*/
+    struct list_elem donated;           /* Used for insertion in donatedPriority */
+  };
+
+/*Struct which stores the donated priority and gets inserted to the thread's donatedPriority List */
+
+struct PQ_Aux
+  {
+    int priority;
+    struct list_elem elem;
   };
 
 /* If false (default), use round-robin scheduler.
@@ -131,6 +155,9 @@ tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
 void thread_block (void);
 void thread_unblock (struct thread *);
+
+/* Comparison Operator for Threads, used in Priority Scheduling */
+bool Compare(struct list_elem* t1, struct list_elem* t2, void *aux);
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);
@@ -154,4 +181,5 @@ int thread_get_load_avg (void);
 /* look through all threads and find the one with tid, else null */
 struct thread* id_to_thread(tid_t tid);
 
+int findThread(int pid);
 #endif /* threads/thread.h */

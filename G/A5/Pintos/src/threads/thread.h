@@ -122,6 +122,20 @@ struct thread
 
     struct childProcess* corresp;       /*Pointer to the corresponding childProcess object */
     char* file_name;                    /*Name of the file currently executed by the thread*/
+
+    int currentPriority;                /*current Priority of the thread*/
+    struct list donatedPriority;        /*List of threads which have donated their priority to this thread*/
+    struct list_elem donated;           /* Used for insertion in donatedPriority */
+
+    struct lock* blockLock;             /* Lock acquire on this lock is blocked by other thread */
+  };
+
+/*Struct which stores the donated priority and gets inserted to the thread's donatedPriority List */
+
+struct PQ_Aux
+  {
+    int priority;
+    struct list_elem elem;
   };
 
 /* If false (default), use round-robin scheduler.
@@ -143,6 +157,11 @@ tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
 void thread_block (void);
 void thread_unblock (struct thread *);
+
+/* Comparison Operator for Threads, used in Priority Scheduling */
+bool Compare(struct list_elem* t1, struct list_elem* t2, void *aux);
+
+bool Compare2(struct list_elem* l1, struct list_elem* l2, void *aux);
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);

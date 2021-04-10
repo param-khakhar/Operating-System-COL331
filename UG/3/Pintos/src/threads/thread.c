@@ -11,8 +11,11 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/malloc.h"
+#include "userprog/syscall.h"
 #ifdef USERPROG
 #include "userprog/process.h"
+#include "userprog/syscall.h"
 #endif
 #ifdef VM
 #include "vm/sup_page.h"
@@ -191,6 +194,8 @@ thread_create (const char *name, int priority,
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
 
+  t->parent = thread_tid();
+
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
   kf->eip = NULL;
@@ -206,10 +211,16 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
+
+  t->currentPriority = priority;
+  
   /* Add to run queue. */
   thread_unblock (t);
 
-  return tid;
+  if(t->priority > thread_get_priority())
+    thread_yield();
+
+  return tid; 
 }
 
 /* Puts the current thread to sleep.  It will not be scheduled
@@ -245,7 +256,9 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  // list_push_back(&ready_list, &t->elem);
+  printf("Inserting: %d\n",t->priority);
+  list_insert_ordered(&ready_list, &t->elem, Compare, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -364,14 +377,29 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  int prev = thread_current()->priority;
+  struct list_elem* head = list_begin(&thread_current()->donatedPriority);
+  if(head == list_end(&thread_current()->donatedPriority)){
+    thread_current ()->priority = new_priority;
+  }
+  else{
+    struct thread* t = list_entry(head, struct thread, donated);
+    prev = t;
+  }
+  if(prev > new_priority)
+    thread_yield();
 }
 
 /* Returns the current thread's priority. */
 int
 thread_get_priority (void) 
 {
-  return thread_current ()->priority;
+  struct list_elem* head = list_begin(&thread_current()->donatedPriority);
+  if(head != list_end(&thread_current()->donatedPriority)){
+    struct thread* t = list_entry(head, struct thread, donated);
+    return t->priority;
+  }
+  return thread_current()->priority;
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -504,6 +532,13 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&(t->sup_page_table));
 #endif
   intr_set_level (old_level);
+
+  /*Initialize fd, and file_list, also children*/
+
+  t->fd = 2;
+  list_init(&t->file_list);
+  list_init(&t->children);
+  list_init(&t->donatedPriority);
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -528,9 +563,9 @@ static struct thread *
 next_thread_to_run (void) 
 {
   if (list_empty (&ready_list))
-    return idle_thread;
-  else
-    return list_entry (list_pop_front (&ready_list), struct thread, elem);
+    return idle_thread; 
+
+  return list_entry (list_pop_front (&ready_list), struct thread, elem);
 }
 
 /* Completes a thread switch by activating the new thread's page
@@ -623,3 +658,26 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+int findThread(int pid){
+  struct list_elem* head = list_begin(&all_list);
+
+  while(head != list_end(&all_list)){
+    struct thread* t = list_entry(head, struct thread, elem);
+    if(t->tid == pid){
+      return 1;
+    }
+    head = list_next(head);
+  }
+  return 0;
+}
+
+bool Compare(struct list_elem* l1, struct list_elem* l2, void *aux){
+  struct thread* t1 = list_entry(l1, struct thread, elem);
+  struct thread* t2 = list_entry(l2, struct thread, elem);
+
+  int p1 = t1->priority;
+  int p2 = t2->priority;
+
+  return p1 > p2;
+}

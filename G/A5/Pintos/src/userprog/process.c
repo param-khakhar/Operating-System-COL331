@@ -19,7 +19,6 @@
 #include "threads/vaddr.h"
 #include "threads/synch.h"
 #include "threads/malloc.h"
-#include "userprog/syscall.h"
 #ifdef VM
 #include "vm/frame.h"
 #include "vm/sup_page.h"
@@ -36,7 +35,6 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 tid_t
 process_execute (const char *file_name) 
 {
-
   char *fn_copy;
   tid_t tid;
 
@@ -51,14 +49,10 @@ process_execute (const char *file_name)
 
   strlcpy (fn_copy, file_name, PGSIZE);
 
-  struct sync_aux* aux = (struct sync_aux*)malloc(sizeof(struct sync_aux));
-  sema_init(&aux->sem, 0);
-  aux->fn_clone = fn_copy;
-  aux->cmd_line = file_name;
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, aux);
-  sema_down(&aux->sem);
+  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+
   // free memory on error
   if(tid == TID_ERROR) {
     palloc_free_page (fn_copy);
@@ -73,38 +67,63 @@ process_execute (const char *file_name)
 static void
 start_process (void *load_p)
 {
-  struct sync_aux* aux = (struct sync_aux *)load_p;
-  char * file_name = aux->fn_clone;
+  char *file_name = load_p;
   struct intr_frame if_;
   bool success;
   char *vargs[MAX_ARGS];
   int nargs = 0;
   int argssize = strlen(file_name) + 1;
-  int debug = 0;
 
   /* tokenize command line */
-  // char *token, *save_ptr;
-  // for (token = strtok_r (file_name, " ", &save_ptr); token != NULL;
-  //       token = strtok_r (NULL, " ", &save_ptr)) {
-  //  vargs[nargs++] = token;
-  //  ASSERT(nargs < MAX_ARGS);
-  // }
+  char *token, *save_ptr;
+  for (token = strtok_r (file_name, " ", &save_ptr); token != NULL;
+        token = strtok_r (NULL, " ", &save_ptr)) {
+   vargs[nargs++] = token;
+   ASSERT(nargs < MAX_ARGS);
+  }
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
-  
-  /* If load failed, quit. */
-  sema_up(&aux->sem);
-  if (!success){
-    thread_exit ();
-  }
-  
-    palloc_free_page (file_name);
+  success = load (vargs[0], &if_.eip, &if_.esp);
 
+  /* If load failed, quit. */
+  if (!success)
+    thread_exit ();
+
+  /* build the stack from the given arguments */
+  char* esp = if_.esp;
+  esp -= argssize;
+  memcpy(esp, load_p, argssize);
+  /* let's adjust the vargs pointers to point to this area */
+  size_t offs = (char*)vargs[0] - esp;
+  for(int i=0;i<nargs;i++) vargs[i] = vargs[i] - offs;
+  /* align to word boundary */
+  esp -= (size_t)esp%4;
+  /* get null in */
+  esp -= sizeof(char*); 
+  /* push arg references right to left */
+  esp -= sizeof(char*) * nargs;
+  memcpy(esp, vargs, sizeof(char*) * nargs);
+  /* push vargs */
+  char** temp = (char**)esp;
+  esp -= sizeof(char**);
+  *(char***) esp = temp;
+  /* push nargs */
+  esp -= sizeof(int);
+  *(int*) esp = nargs;
+  /* return address */
+  esp -= sizeof(void *);
+  *(void **)esp = NULL;
+ 
+  /* no need for file_name anymore */
+  palloc_free_page (file_name);
+ 
+//  hex_dump(esp, esp, (char*)if_.esp - esp, true);
+
+  if_.esp = esp;
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -127,24 +146,6 @@ start_process (void *load_p)
 int
 process_wait (tid_t child_tid)
 {
-  /*Find child_process from the list, and busy wait on the value of exit*/
-  // printf("Wait for: %d, Parent(current): %d\n",child_tid, thread_tid());
-  struct childProcess* cp = searchChild(child_tid);
-  if(!cp)
-    return ERROR;
-  if(cp->waiting == 1)
-    return ERROR;
-  cp->waiting = 1;
-
-  if(cp->exit_status == 0){
-    /*Use a semaphore instead of busy waiting!*/
-    // printf("CPID: %d\n",cp->pid);
-    sema_down(&cp->waitLock);
-  }
-  int status = cp->status;
-  // printf("StatusW: %d, Tid: %d\n",status,thread_tid());
-  removeChild(child_tid, false);
-  return status;
 }
 
 /* Free the current process's resources. */
@@ -153,14 +154,6 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
-
-  sys_close(0, true);
-
-  removeChild(0, true);
-
-  if(findThread(cur->parent)){
-    cur->corresp->exit_status = 1; 
-  }
 
 #ifdef VM
   /* close also the exec file assoiated with this */
@@ -265,7 +258,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp, const char* cmd_line);
+static bool setup_stack (void **esp);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -296,13 +289,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
     goto done;
   process_activate ();
 
-  char* saveptr;
-  char* split = malloc(strlen(file_name)+1);
-  strlcpy(split, file_name, strlen(file_name)+1);
-
-  split = strtok_r(split," ",&saveptr);
   /* Open executable file. */
-  file = filesys_open (split);
+  file = filesys_open (file_name);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
@@ -390,7 +378,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp, file_name))
+  if (!setup_stack (esp))
     goto done;
 
   /* Start address. */
@@ -402,11 +390,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /* We arrive here whether the load is successful or not. */
 /* Do not close this anymore - file will be used in exception.c page fault */
 //  file_close (file);
-  // thread_current()->corresp->exit_status = 1;
-  if(!success)
-    thread_current()->corresp->status = -1;
-  else
-    thread_current()->corresp->load_status = 1;
   return success;
 }
 
@@ -554,7 +537,7 @@ lazy_load_segment (struct file *file UNUSED, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp, const char* cmd_line) 
+setup_stack (void **esp) 
 {
   uint8_t *kpage;
   bool success = false;
@@ -584,82 +567,7 @@ setup_stack (void **esp, const char* cmd_line)
         palloc_free_page (kpage);
 #endif
     }
-    char* argv[MAX_ARGS];
-    int argc = 0;
-    char *token, *saveptr;
-    int current = 2;
-    for (token = strtok_r ((char*)cmd_line, " ", &saveptr); token != NULL; token = strtok_r (NULL, " ", &saveptr)){
-      argv[argc] = token;
-      argc++;
-    }
-    int debug = 0;
-    /*Save the tokens on the stack first*/
-
-    int i = argc-1;
-    while(i >= 0){
-      *esp -= (strlen(argv[i]) + 1);
-      debug += (strlen(argv[i])+1);
-      memcpy(*esp, argv[i], strlen(argv[i])+1);     //Copy the arguments themselves
-      argv[i] = *esp;
-      //printf("%s\n",*esp);
-      //printf("Saved: %p\n",argv[i]);
-      i--;
-    }
-
-    i = (PHYS_BASE - *esp) % 4;                       //Zeroing out the remaining locations, in case the address isn't
-                                                      // word addressable.
-    uint8_t zero = 0;
-    if(i != 0){
-      *esp -= (4-i);
-      debug += (4-i);
-      memcpy(*esp, &zero, (4-i)*sizeof(uint8_t));
-      //printf("Aligned: %p\n",*esp);
-    }
-
-    /*Push Null*/
-    int Zero = 0;
-    *esp -= sizeof(char*);
-    debug += sizeof(char*);
-    memcpy(*esp, &Zero, sizeof(char*));
-
-    /* Now push the pointers to the tokens on the stack */
-    void* temp, *temp1;
-    temp = *esp;
-    //printf("Address-1: %p %s\n",*esp, *(char*)(temp));
-    // temp = *esp;
-    // printf("Address-1: %p %p\n", *(char*)temp,*esp);
-    i = argc-1;
-    while(i >= 0){
-      *esp -= sizeof(char*);
-      debug += sizeof(char*);
-      memcpy(*esp, &argv[i], sizeof(char*));
-      temp1 = *esp;
-      i--;
-    }
-    /*Now push argv itself on the stack*/
-    token = *esp;
-    *esp -= sizeof(char**);
-    debug += sizeof(char**);
-    memcpy(*esp, &token, sizeof(char**));
-    //printf("Stack: %p %p\n",*esp);
-    /*Finally the argc, number of command line arguments*/
-
-    *esp -= sizeof(int);
-    debug += sizeof(int);
-    memcpy(*esp, &argc, sizeof(int));
-    //printf("Stack: %p\n",*esp);
-    /*The call to main would exit, but conventionally, push the fake return address*/
-
-    *esp -= sizeof(int);
-    debug += sizeof(int);
-    memcpy(*esp, &Zero, sizeof(int));
-    //printf("Stack: %p\n",*esp);
-    //hex_dump(0, *esp, debug, 1);
-
-
-    // //free(argv);
-  
-  return success; 
+  return success;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel

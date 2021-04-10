@@ -155,7 +155,7 @@ syscall_handler (struct intr_frame *f)
       f->eax = sys_remove(remove->file);
       break;
 
-    case SYS_OPEN:
+    case SYS_OPEN: 
 
       // printf("Open System Call\n");
       check(f->esp, 1);

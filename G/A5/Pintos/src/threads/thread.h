@@ -130,14 +130,6 @@ struct thread
     struct lock* blockLock;             /* Lock acquire on this lock is blocked by other thread */
   };
 
-/*Struct which stores the donated priority and gets inserted to the thread's donatedPriority List */
-
-struct PQ_Aux
-  {
-    int priority;
-    struct list_elem elem;
-  };
-
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */

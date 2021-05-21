@@ -259,14 +259,16 @@ thread_unblock (struct thread *t)
 
   ASSERT (is_thread (t));
 
-  old_level = intr_disable ();
+  old_level = intr_disable (); 
   ASSERT (t->status == THREAD_BLOCKED);
-  // list_push_back(&ready_list, &t->elem);
+  //list_push_back(&ready_list, &t->elem);
   // list_sort(&ready_list, Compare, NULL);
   // printf("Entered Priority: %d\n",t->priority);
   list_insert_ordered(&ready_list, &t->elem, (list_less_func*)Compare, NULL);
   t->status = THREAD_READY;
+
   intr_set_level (old_level);
+  //thread_yield();
 }
 
 /* Returns the name of the running thread. */
@@ -340,7 +342,7 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) 
+  if (cur != idle_thread)  
     list_insert_ordered(&ready_list, &cur->elem, (list_less_func*)Compare, NULL);
     //list_push_back (&ready_list, &cur->elem);
   cur->status = THREAD_READY;
@@ -566,6 +568,7 @@ next_thread_to_run (void)
   if (list_empty (&ready_list))
     return idle_thread; 
 
+  //list_sort(&ready_list, (list_less_func*)Compare, NULL);
   return list_entry (list_pop_front (&ready_list), struct thread, elem);
 }
 

@@ -14,9 +14,9 @@
 ### Operation Specification: ###
 
 - make matrix_mult: This would compile matrixMult.c and execute the executable with 15 threads.
-- make run matrix_mult: This would only execute the executable matrixMult with 15 threads.
+- make run_matrix_mult: This would only execute the executable matrixMult with 15 threads.
 - make boundedBuffer: This would compile boundedBuffer.c and execute the executable with 2 consumers, producers and 3 inventory size.
-- make run boundedBuffer: This would execute the executable with 2 consumers, producers and 3 inventory size.
+- make run_boundedBuffer: This would execute the executable with 2 consumers, producers and 3 inventory size.
 - make all: Compile all the source files, send the newly generated files to their respective folders.
 - make run_test(1 - 7): It would compile the individual tests, and then execute.
 - make clean: This would remove the contents of /bin, /lib, /obj, and /output. 

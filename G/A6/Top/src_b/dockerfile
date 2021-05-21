@@ -1,0 +1,5 @@
+FROM gcc:4.9
+COPY . /Prime
+WORKDIR /Prime/
+RUN gcc -o primeChecker main.c -w -lm -lpthread
+CMD ["./primeChecker"]

@@ -1,0 +1,383 @@
+﻿﻿			+--------------------+
+                        |        COL331      |
+                        | PROJECT 5: PRIORITY| 
+                        |    SCHEDULING      |
+                        |   DESIGN DOCUMENT  |
+                        +--------------------+
+                                   
+---- GROUP ----
+
+>> Fill in the names and email addresses of your group members.
+
+Param Khakhar cs1180362@cse.iitd.ac.in
+
+---- PRELIMINARIES ----
+
+>> If you have any preliminary comments on your submission, notes for the
+>> TAs, or extra credit, please give them here.
+
+>> Please cite any offline or online sources you consulted while
+>> preparing your submission, other than the Pintos documentation, course
+>> text, lecture notes, and course staff.
+
+                         PRIORITY SCHEDULING
+                         ===================
+
+---- DATA STRUCTURES ----
+
+>> B1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+in thread.h:
+
+1. Additions to struct thread:
+
+   struct list donatedPriority;        // List to maintain the threads which have donated their priorities to the current thread.
+
+   struct list_elem donated;           // List_elem which is used to insert the thread into another thread's donatedPriority list.
+
+   struct lock* blockLock;             // The lock on which the thread is waiting.
+
+   int currentPriority;                // Stores the current priority of the donated after donations from various threads.
+
+2. New function signatures:
+
+   bool Compare(struct list_elem* t1, struct list_elem* t2, void *aux);          // Comparator function used while performing a sort or ordered insertion in the readyList.
+
+   bool Compare2(struct list_elem* l1, struct list_elem* l2, void *aux);         // Comparator function used while performing a sort or ordered insertion in thread's donatedPriority List.
+
+
+in synch.h
+
+
+1. New function signatures:
+
+   bool Compare2(struct list_elem* l1, struct list_elem* l2, void *aux);         // Comparator function used while performing a sort or ordered insertion in the waiter list of conditional variable.
+
+in synch.c
+
+1. struct semaphore_elem
+
+   int priority;                       // Stores the priority associated with the thread corresponding to the semaphore_element. Used for ordering and performing sort.
+
+in thread.c
+
+1. Initialization of the list donatedPriority in the function init_thread().
+2. Modified the following functions:
+
+    - void thread_set_priority(int priority) which would now yield if initially the thread was running and
+    if the new priority has been reduced.
+
+    - void thread_get_priority(void), which would now return the updated priority of the thread keeping in 
+    consideration the donatedPriority as well.
+ 
+
+>> B2: Explain the data structure used to track priority donation.
+>> Use ASCII art to diagram a nested donation.  (Alternately, submit a
+>> .png file.)
+
+The list of threads which have donated priorities to the current thread is used
+along with a variable which stores the current (updated) priority of the thread.
+There's a reference to the lock on which the current thread is waiting on as well,
+which would further aid in propagation of the higher priority to the lower levels as well.
+
+Whenever a medium priority thread (say M) tries to acquire a lock already held by a low
+priority thread (say L), then it would donate it's priority to L, the reference blockLock for M
+would be set to the lock which it is trying to acquire. And further it would check using the blockLock for
+L, whether the priority of M needs to be propagated to a thread which is at a level below that of 
+L. 
+
+When the thread L, releases the lock, then it would check in it's donated list, remove all the threads who
+were blocked on the same lock and along with the removal, they would also get inserted in the readyList of
+threads. The priority of the thread L would be set according to the remaining threads in the donatedPriority
+list of L. In case the list is empty, the current priority of the thread would be set to the default priority
+which is stored in the variable priority. 
+ 
+Using the data structure and algorithm above, priority donation, including the 
+simplest donation, multiple donation, and nest donation, can be achieved.
+ 
+take example like this
+A thread, priority 31, has lock lock_1. 
+B thread, priority 32, has lock lock_2, and acquire lock_1
+C thread, priority 33, acquire lock_2 
+ 
+Step 1: At the beginning:
+=========================
+.--------------------------------------------.
+|         Thread A (Beginning)               |
++-------------------+------------------------+
+| member            | value                  |
++-------------------+------------------------+
+| currentPriority   | 31                     |
+| priority          | 31                     |
+| blockLock         | NULL                   |
+| donatedPriority   | []                     |
+'-------------------+------------------------'
+
+.--------------------------------------------.
+|         Thread B (Beginning)               |
++-------------------+------------------------+
+| member            | value                  |
++-------------------+------------------------+
+| currentPriority   | 32                     |
+| priority          | 32                     |
+| blockLock         | NULL                   |
+| donatedPriority   | []                     |
+'-------------------+------------------------'
+
+.--------------------------------------------.
+|         Thread C (Beginning)               |
++-------------------+------------------------+
+| member            | value                  |
++-------------------+------------------------+
+| currentPriority   | 33                     |
+| priority          | 33                     |
+| blockLock         | NULL                   |
+| donatedPriority   | []                     |
+'-------------------+------------------------'
+
+==================================================================
+ 
+Step 2: B acquires lock_1:
+==========================
+
+.--------------------------------------------.
+|         Thread B (Beginning)               |
++-------------------+------------------------+
+| member            | value                  |
++-------------------+------------------------+
+| currentPriority   | 32                     |
+| priority          | 32                     |
+| blockLock         | lock_1                 |
+| donatedPriority   | []                     |
+'-------------------+------------------------'
+
+.--------------------------------------------.
+|         Thread B (B acquires lock_1)       |
++-------------------+------------------------+
+| member            | value                  |
++-------------------+------------------------+
+| currentPriority   | 32                     |
+| priority          | 32                     |
+| blockLock         | NULL                   |
+| donatedPriority   | []                     |
+'-------------------+------------------------'
+
+.--------------------------------------------.
+|         Thread A (B acquires lock_1)       |
++-------------------+------------------------+
+| member            | value                  |
++-------------------+------------------------+
+| currentPriority   | 32                     |
+| priority          | 31                     |
+| blockLock         | NULL                   |
+| donatedPriority   | [Thread B]             |
+'-------------------+------------------------'
+
+
+.--------------------------------------------.
+|         Thread C (B acquires lock_1)       |
++-------------------+------------------------+
+| member            | value                  |
++-------------------+------------------------+
+| currentPriority   | 33                     |
+| priority          | 33                     |
+| blockLock         | NULL                   |
+| donatedPriority   | []                     |
+'-------------------+------------------------'
+
+
+==================================================================
+ 
+STEP 3: C acquires lock_2:
+============================
+
+.--------------------------------------------.
+|         Thread C (C acquires lock_2)       |
++-------------------+------------------------+
+| member            | value                  |
++-------------------+------------------------+
+| currentPriority   | 33                     |
+| priority          | 33                     |
+| blockLock         | lock_2                 |
+| donatedPriority   | []                     |
+'-------------------+------------------------'
+
+.--------------------------------------------.
+|         Thread B (C acquires lock_2)       |
++-------------------+------------------------+
+| member            | value                  |
++-------------------+------------------------+
+| currentPriority   | 33                     |
+| priority          | 32                     |
+| blockLock         | lock_1                 |
+| donatedPriority   | [Thread C]             |
+'-------------------+------------------------'
+
+.--------------------------------------------.
+|         Thread A (C acquires lock_2)       |
++-------------------+------------------------+
+| member            | value                  |
++-------------------+------------------------+
+| currentPriority   | 33                     |
+| priority          | 31                     |
+| blockLock         | NULL                   |
+| donatedPriority   | [Thread B]             |
+'-------------------+------------------------'
+
+==================================================================
+ 
+STEP 4: A releases lock_1:
+==========================
+
+.--------------------------------------------.
+|         Thread A (A releases lock_1)       |
++-------------------+------------------------+
+| member            | value                  |
++-------------------+------------------------+
+| currentPriority   | 31                     |
+| priority          | 31                     |
+| blockLock         | NULL                   |
+| donatedPriority   | []                     |
+'-------------------+------------------------'
+
+.--------------------------------------------.
+|         Thread B (A releases lock_1)       |
++-------------------+------------------------+
+| member            | value                  |
++-------------------+------------------------+
+| currentPriority   | 33                     |
+| priority          | 32                     |
+| blockLock         | NULL                   |
+| donatedPriority   | [Thread C]             |
+'-------------------+------------------------'
+
+.--------------------------------------------.
+|         Thread C (A acquires lock_1)       |
++-------------------+------------------------+
+| member            | value                  |
++-------------------+------------------------+
+| currentPriority   | 33                     |
+| priority          | 33                     |
+| blockLock         | lock_2                 |
+| donatedPriority   | []                     |
+'-------------------+------------------------'
+
+==================================================================
+ 
+STEP 5: B releases lock_2:
+==========================
+
+.--------------------------------------------.
+|         Thread B (B releases lock_2)       |
++-------------------+------------------------+
+| member            | value                  |
++-------------------+------------------------+
+| currentPriority   | 32                     |
+| priority          | 32                     |
+| blockLock         | NULL                   |
+| donatedPriority   | []                     |
+'-------------------+------------------------'
+
+.--------------------------------------------.
+|         Thread C (B releases lock_2)       |
++-------------------+------------------------+
+| member            | value                  |
++-------------------+------------------------+
+| currentPriority   | 33                     |
+| priority          | 33                     |
+| blockLock         | NULL                   |
+| donatedPriority   | []                     |
+'-------------------+------------------------'
+
+.--------------------------------------------.
+|         Thread A (A releases lock_2)       |
++-------------------+------------------------+
+| member            | value                  |
++-------------------+------------------------+
+| currentPriority   | 31                     |
+| priority          | 31                     |
+| blockLock         | NULL                   |
+| donatedPriority   | []                     |
+'-------------------+------------------------'
+
+==================================================================
+ 
+---- ALGORITHMS ----
+
+>> B3: How do you ensure that the highest priority thread waiting for
+>> a lock, semaphore, or condition variable wakes up first?
+
+A: Change the waiters list to a sorted list, which is ordering by currentPriority.
+Every time waking up the waiter, threads are put to ready list from the
+beginning to the end, which is actually from the highest currentPriority to a 
+the lowest currentPriority.
+ 
+
+>> B4: Describe the sequence of events when a call to lock_acquire()
+>> causes a priority donation.  How is nested donation handled?
+A: Steps:
+   1. Disable interrupts
+   2. Donation
+     2.1 IF lock_holder is not NULL
+      2.2.0 Assign L the thread holding the lock, and C the current thread.
+      2.2.1  IF L’s priority < C’s priority
+      2.2.1.1  Update the currentPriority of C.              
+      2.2.1.2  Add the thread L into the donatedPriority list of C.
+      2.2.1.3  Check for nested levels of threads, which might require priority donation.
+
+
+   3. sema_down: if sema value is 0, put all threads acquiring this
+         lock into the sema’s waiters list until sema value becomes 
+         positive 
+   4. Set the current thread to this lock’s holder
+   5. Set interrupts to the status before it was disabled
+ 
+>> B5: Describe the sequence of events when lock_release() is called
+>> on a lock that a higher-priority thread is waiting for.
+A: Steps:
+   1. Make sure this thread is the holder of this lock. If it is not the
+      holder, report error.
+   2. Disable interrupts.
+   3. Set the lock holder to NULL
+   4. Does sema_up: increase the sema value by 1, which means this
+      lock which can be get by its semaphore.waiters or any thread is
+      going to acquire it
+   5. Iterate over the list of threads, which are blocked by this loop, and remove them along with setting the
+      blockLock pointer to NULL.
+   6. Set the original lock_holder’s priority value to the
+      6.1 The highest priority thread, remaining in the list.
+      6.2 If the list is empty, reset the currentPriority to the original priority.
+      6.3 Finally check if there is another thread with higher priority in the ready list, then invoke thread_yield().
+
+---- SYNCHRONIZATION ----
+
+>> B6: Describe a potential race in thread_set_priority() and explain
+>> how your implementation avoids it.  Can you use a lock to avoid
+>> this race?
+
+A: During priority donation, the lock holder’s priority may be set by it’s donor,
+at the mean time, the thread itself may want to change the priority.
+If the donor and the thread itself set the priority in a different order, may 
+cause a different result. 
+ 
+We disable the interrupt to prevent it happens. It can not be avoided using a lock
+in our implementation, since we didn’t provide the interface and structure to 
+share a lock between donor and the thread itself. If we add a lock to the thread 
+struct, it may be avoided using it. 
+ 
+
+---- RATIONALE ----
+
+>> B7: Why did you choose this design?  In what ways is it superior to
+>> another design you considered?
+
+Another potential design would be to create structure which contains the details about the donating thread, 
+the receiving thread and so on, and we insert that structure into the declared inside the thread. However, given
+the restrictions involved with dynamic memory allocation for the PintOS, it would be better if we use the already 
+declared structures and the corresponding instantiated objects. Therefore, a list of threads would be good in order
+to meet the specific requirements.
+
+Thus, the used design is simpler, and minimal to some extent as only a new variable, a new pointer was introduced
+in the structure. 

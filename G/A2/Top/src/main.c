@@ -214,7 +214,7 @@ int main(int argc, char* argv[])
 			fprintf(gnuplotPipe, commands[i], rangeend);
 		else		
     		fprintf(gnuplotPipe, commands[i]); 
-		fprintf(gnuplotPipe,"\n");
+		fprintf(gnuplotPipe,"\n")
     }	
 	fclose(dataFast);
 	fclose(dataSlow);
